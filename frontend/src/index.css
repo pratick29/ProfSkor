@@ -1,0 +1,219 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --accent: #14b8a6;
+  --accent-rgb: 20, 184, 166;
+  --accent-light: #06b6d4;
+  --bg: #050508;
+  --surface: #111118;
+  --text: #f4f4f5;
+  --muted: #71717a;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(20, 184, 166, 0.3) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(20, 184, 166, 0.3);
+  border-radius: 3px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Outfit", system-ui, sans-serif;
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Animated Background */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  background: 
+    radial-gradient(circle at 20% 50%, rgba(20, 184, 166, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(6, 182, 212, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 40% 20%, rgba(20, 184, 166, 0.05) 0%, transparent 50%);
+  animation: gradient 15s ease infinite;
+  background-size: 200% 200%;
+}
+
+@keyframes gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Floating orbs */
+body::after {
+  content: "";
+  position: fixed;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  z-index: -1;
+  background: 
+    radial-gradient(circle at 30% 30%, rgba(20, 184, 166, 0.08) 0%, transparent 30%),
+    radial-gradient(circle at 70% 70%, rgba(6, 182, 212, 0.08) 0%, transparent 30%);
+  animation: float 20s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  33% { transform: translate(30px, -30px) rotate(120deg); }
+  66% { transform: translate(-30px, 30px) rotate(240deg); }
+}
+
+/* Card - New soft elevation style */
+.card {
+  background: linear-gradient(145deg, rgba(20, 20, 28, 0.9) 0%, rgba(17, 17, 24, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(20, 184, 166, 0.05), transparent);
+  animation: shimmer 3s infinite;
+}
+
+.card:hover {
+  border-color: rgba(20, 184, 166, 0.2);
+  box-shadow: 0 8px 32px -4px rgba(20, 184, 166, 0.1), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/* Inputs */
+.input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: white;
+  outline: none;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.2);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Primary button */
+.btn-primary {
+  @apply px-6 py-3 rounded-xl font-semibold transition-all duration-200;
+  background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+  color: white;
+  box-shadow: 0 4px 14px -2px rgba(20, 184, 166, 0.4);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #06b6d4 0%, #14b8a6 100%);
+  box-shadow: 0 6px 20px -2px rgba(20, 184, 166, 0.5);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Secondary / Ghost button */
+.btn-secondary {
+  @apply px-6 py-3 rounded-xl font-semibold transition-all;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(20, 184, 166, 0.3);
+}
+
+/* Brand/accent color utility */
+.brand {
+  color: var(--accent);
+}
+
+.bg-brand {
+  background: var(--accent);
+}
+
+/* Glass effect for overlays */
+.glass {
+  background: rgba(17, 17, 24, 0.8);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Recharts tooltip */
+.recharts-tooltip-wrapper {
+  font-size: 13px;
+}
+
+/* Animations */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.4s ease-out forwards;
+}
+
+/* Glow effect */
+.glow {
+  box-shadow: 0 0 20px rgba(20, 184, 166, 0.3);
+}
+
+.glow:hover {
+  box-shadow: 0 0 30px rgba(20, 184, 166, 0.5);
+}
