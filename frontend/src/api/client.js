@@ -12,11 +12,6 @@ api.interceptors.request.use(async (config) => {
   } = await supabase.auth.getSession();
   if (session?.access_token) {
     config.headers.Authorization = `Bearer ${session.access_token}`;
-    if (session.user?.id) {
-      config.headers["x-user-id"] = session.user.id;
-    }
-  } else if (localStorage.getItem("profskor_guest") === "true") {
-    config.headers["x-user-id"] = "guest";
   }
   return config;
 });

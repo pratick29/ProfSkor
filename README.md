@@ -54,6 +54,12 @@ This creates:
 
 Includes indexes and row-level security policies.
 
+To make a user an admin, set their `app_metadata` (not `user_metadata`, which users can edit themselves):
+
+```sql
+update auth.users set raw_app_meta_data = raw_app_meta_data || '{"role": "admin"}' where email = 'you@example.com';
+```
+
 ## Testing and CI
 
 - Backend tests: `pytest backend/test_main.py`

@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, Uplo
 from fastapi.middleware.cors import CORSMiddleware
 
 try:
-    from auth import require_admin, require_user
+    from auth import get_optional_user, require_admin, require_user
     from core.default_preferences import DEFAULT_PREFS
     from core.leetcode_scoring import leetcode_score
     from core.scoring import github_score
@@ -20,7 +20,7 @@ try:
     from resume_service import MAX_FILE_SIZE_BYTES, analyze_resume_text, extract_text_from_pdf
     from schemas import GithubScoreRequest, LeetcodeScoreRequest, LinkedinInput, LinkedinScoreRequest, SaveProfileRequest, ScoreRequest
 except ModuleNotFoundError:
-    from backend.auth import require_admin, require_user
+    from backend.auth import get_optional_user, require_admin, require_user
     from backend.core.default_preferences import DEFAULT_PREFS
     from backend.core.leetcode_scoring import leetcode_score
     from backend.core.scoring import github_score
@@ -80,6 +80,20 @@ def safe_linkedin_score(linkedin: LinkedinInput, prefs: Dict[str, Any]) -> float
     posting_map = {"0 per week": 0.25, "1 per week": 0.5, "2-3 per week": 0.75, "4+ per week": 1}
     score += posting_map.get(linkedin.posting, 0.25) * lp["posting"]
     return min(score, 100)
+
+
+def current_user_dep(authorization: Optional[str] = Header(default=None)):
+    return require_user(supabase, authorization)
+
+
+def optional_user_dep(authorization: Optional[str] = Header(default=None)):
+    return get_optional_user(supabase, authorization)
+
+
+def admin_user_dep(
+    authorization: Optional[str] = Header(default=None), x_admin_secret: Optional[str] = Header(default=None)
+):
+    return require_admin(supabase, authorization, x_admin_secret)
 
 
 @app.get("/health")
@@ -152,7 +166,7 @@ def score_linkedin(payload: LinkedinScoreRequest, request: Request):
 
 
 @app.post("/score")
-def score_profile(payload: ScoreRequest, request: Request):
+def score_profile(payload: ScoreRequest, request: Request, auth_user=Depends(optional_user_dep)):
     enforce_rate_limit(request)
     prefs = payload.preferences or DEFAULT_PREFS
     github_score_value = leetcode_score_value = 0.0
@@ -199,17 +213,19 @@ def score_profile(payload: ScoreRequest, request: Request):
     )
     overall = max(0, min(overall, 100))
 
-    try:
-        insert_score_history(
-            supabase,
-            payload.user_id,
-            overall,
-            github_score_value,
-            leetcode_score_value,
-            linkedin_score_value,
-        )
-    except Exception as e:
-        print(f"Error saving score history: {e}")
+    # Only persist history for authenticated users; never trust a user_id from the request body
+    if auth_user:
+        try:
+            insert_score_history(
+                supabase,
+                auth_user["id"],
+                overall,
+                github_score_value,
+                leetcode_score_value,
+                linkedin_score_value,
+            )
+        except Exception as e:
+            print(f"Error saving score history: {e}")
 
     suggestions = [f"(GitHub) {x}" for x in github_suggestions] + [f"(LeetCode) {x}" for x in leetcode_suggestions]
     if linkedin_score_value < 70:
@@ -226,18 +242,6 @@ def score_profile(payload: ScoreRequest, request: Request):
         "leetcode_meta": leetcode_meta,
         "suggestions": suggestions[:12],
     }
-
-
-def current_user_dep(
-    authorization: Optional[str] = Header(default=None), x_user_id: Optional[str] = Header(default=None)
-):
-    return require_user(supabase, authorization, x_user_id)
-
-
-def admin_user_dep(
-    authorization: Optional[str] = Header(default=None), x_admin_secret: Optional[str] = Header(default=None)
-):
-    return require_admin(supabase, authorization, x_admin_secret)
 
 
 @app.post("/profiles/save")
@@ -306,7 +310,7 @@ def has_feature(feature_key: str, auth_user=Depends(current_user_dep)):
 async def resume_review(
     request: Request,
     file: UploadFile = File(...),
-    auth_user=Depends(current_user_dep),
+    auth_user=Depends(optional_user_dep),
 ):
     enforce_rate_limit(request)
     if not file.filename.lower().endswith(".pdf"):
@@ -318,10 +322,11 @@ async def resume_review(
     if not text or len(text.strip()) < 50:
         raise HTTPException(status_code=400, detail="Could not extract meaningful text from PDF")
     analysis = analyze_resume_text(text)
-    try:
-        insert_resume_analysis(supabase, auth_user["id"], file.filename, analysis)
-    except Exception as e:
-        print(f"Error saving resume analysis: {e}")
+    if auth_user:
+        try:
+            insert_resume_analysis(supabase, auth_user["id"], file.filename, analysis)
+        except Exception as e:
+            print(f"Error saving resume analysis: {e}")
     return analysis
 
 

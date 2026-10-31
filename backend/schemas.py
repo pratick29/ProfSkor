@@ -18,7 +18,8 @@ class LinkedinInput(BaseModel):
 
 
 class ScoreRequest(BaseModel):
-    user_id: str = Field(min_length=1, max_length=128)
+    # Ignored: the user is taken from the auth token. Kept so older clients don't get a 422.
+    user_id: Optional[str] = Field(default=None, max_length=128)
     role: str = Field(min_length=1, max_length=120)
     github_username: str = ""
     leetcode_username: str = ""
