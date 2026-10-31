@@ -22,19 +22,24 @@ export default function Compare() {
 
   async function fetchProfile(p) {
     const [g, l] = await Promise.all([
-      api.post("/score/github", { github_username: p.github }),
-      api.post("/score/leetcode", { leetcode_username: p.leetcode })
+      api.post("/score/github", { github_username: p.github.trim() }),
+      p.leetcode.trim()
+        ? api.post("/score/leetcode", { leetcode_username: p.leetcode.trim() })
+        : Promise.resolve(null)
     ]);
+    const github = g.data.score;
+    const leetcode = l ? l.data.score : 0;
 
     return {
-      github: g.data.score,
-      leetcode: l.data.score,
-      total: g.data.score + l.data.score
+      github,
+      leetcode,
+      // average of the platforms that were provided, so leaving LeetCode empty isn't a penalty
+      total: l ? Math.round((github + leetcode) / 2) : github
     };
   }
 
   async function handleCompare() {
-    if (!left.github || !right.github) {
+    if (!left.github.trim() || !right.github.trim()) {
       toast("Enter GitHub usernames");
       return;
     }

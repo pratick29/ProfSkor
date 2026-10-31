@@ -145,3 +145,52 @@ def test_resume_rules_weak_resume():
     result = analyze_resume_rules("hello world " * 30)
     assert result["score"] < 20
     assert "Missing email address" in result["weaknesses"]
+
+
+class FakeQuery:
+    """Minimal stand-in for the supabase query builder, recording .eq() filters."""
+
+    def __init__(self, rows):
+        self.rows, self.filters = rows, {}
+
+    def select(self, *a, **k):
+        return self
+
+    def delete(self):
+        return self
+
+    def eq(self, column, value):
+        self.filters[column] = value
+        return self
+
+    def limit(self, n):
+        return self
+
+    def execute(self):
+        data = [r for r in self.rows if all(r.get(k) == v for k, v in self.filters.items())]
+        return SimpleNamespace(data=data, count=len(data))
+
+
+PROFILE_ID = "11111111-2222-3333-4444-555555555555"
+ROWS = [{"id": PROFILE_ID, "user_id": "owner", "profile_type": "github", "profile_name": "p", "profile_data": {}}]
+
+
+def fake_db():
+    return SimpleNamespace(table=lambda name: FakeQuery(ROWS))
+
+
+def test_shared_profile(client, monkeypatch):
+    monkeypatch.setattr(main, "supabase", fake_db())
+    res = client.get(f"/profiles/shared/{PROFILE_ID}")
+    assert res.status_code == 200 and res.json()["profile_type"] == "github"
+    assert client.get("/profiles/shared/not-a-uuid").status_code == 404
+    assert client.get("/profiles/shared/99999999-2222-3333-4444-555555555555").status_code == 404
+
+
+def test_delete_profile_owner_only(client, monkeypatch):
+    monkeypatch.setattr(main, "supabase", fake_db())
+    assert client.delete(f"/profiles/{PROFILE_ID}").status_code == 401
+    monkeypatch.setattr(main, "require_user", lambda db, auth: {"id": "someone-else"})
+    assert client.delete(f"/profiles/{PROFILE_ID}", headers={"Authorization": "Bearer x"}).status_code == 404
+    monkeypatch.setattr(main, "require_user", lambda db, auth: {"id": "owner"})
+    assert client.delete(f"/profiles/{PROFILE_ID}", headers={"Authorization": "Bearer x"}).json() == {"success": True}

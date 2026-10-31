@@ -1,9 +1,8 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import CountUp from "react-countup";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { usePreferences } from "../hooks/usePreferences";
-import { supabase } from "../supabase";
 import WeightControl from "../components/WeightControl";
 import { saveProfile } from "../utils/saveProfile";
 
@@ -24,7 +23,7 @@ import { toast } from "../utils/toast";
 
 export default function Leetcode() {
   const { user } = useAuth();
-  const prefs = usePreferences();
+  const { prefs, updateSection } = usePreferences();
 
   const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(false);
@@ -32,8 +31,6 @@ export default function Leetcode() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
   const [profileName, setProfileName] = useState("");
-
-  const saveTimer = useRef(null);
 
   /* ---------- Score ---------- */
 
@@ -55,7 +52,7 @@ export default function Leetcode() {
       }
 
       setData(res.data);
-      setProfileName(`LeetCode - ${username.trim()}`);
+      setProfileName(`LeetCode - ${res.data.username}`);
     } catch (err) {
       console.log(err);
       toast.error(err.message || "Could not score this profile. Please try again.");
@@ -73,13 +70,13 @@ export default function Leetcode() {
     }
 
     setSaving(true);
-    const name = profileName.trim() || `LeetCode - ${username} - ${new Date().toLocaleDateString()}`;
+    const name = profileName.trim() || `LeetCode - ${data.username} - ${new Date().toLocaleDateString()}`;
     
     const result = await saveProfile(
       user.id,
       "leetcode",
       {
-        username: username,
+        username: data.username,
         score: data.score,
         breakdown: data.breakdown,
         suggestions: data.suggestions,
@@ -100,21 +97,7 @@ export default function Leetcode() {
   /* ---------- Save Pref ---------- */
 
   function updatePref(key, value) {
-    const updated = {
-      ...prefs,
-      leetcode: {
-        ...prefs.leetcode,
-        [key]: value,
-      },
-    };
-
-    clearTimeout(saveTimer.current);
-
-    saveTimer.current = setTimeout(async () => {
-      await supabase
-        .from("user_preferences")
-        .upsert({ user_id: user.id, preferences: updated });
-    }, 400);
+    updateSection("leetcode", key, value);
   }
 
   /* ---------- Charts ---------- */
@@ -339,12 +322,12 @@ export default function Leetcode() {
               <div className="bg-white/5 rounded-lg p-4">
                 <p className="text-sm text-slate-400 mb-4">
                   View full profile: <a 
-                    href={`https://leetcode.com/${username}`} 
+                    href={`https://leetcode.com/u/${data.username}/`} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="text-teal-400 hover:underline"
                   >
-                    leetcode.com/{username}
+                    leetcode.com/u/{data.username}
                   </a>
                 </p>
                 <div className="text-center text-slate-500">
@@ -479,7 +462,7 @@ function Metric({ title, value, big }) {
     <div className="card text-center">
       <p className="text-slate-400 text-sm">{title}</p>
       <p className={`${big ? "text-4xl" : "text-3xl"} font-extrabold mt-1`}>
-        <CountUp end={Number(value)} duration={1.2} />
+        {typeof value === "number" ? <CountUp end={value} duration={1.2} /> : value}
       </p>
     </div>
   );

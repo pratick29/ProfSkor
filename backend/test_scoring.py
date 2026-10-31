@@ -151,3 +151,10 @@ def test_invalid_github_usernames_rejected(bad):
 def test_full_score_usernames_optional():
     req = ScoreRequest()
     assert req.github_username == "" and req.leetcode_username == ""
+
+
+def test_weight_templates_sum_to_100():
+    from core.weight_templates import WEIGHT_TEMPLATES
+    for name, template in WEIGHT_TEMPLATES.items():
+        for section, weights in template.items():
+            assert sum(weights.values()) == 100, (name, section)

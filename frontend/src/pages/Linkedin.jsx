@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import { usePreferences } from "../hooks/usePreferences";
-import { supabase } from "../supabase";
 import { useAuth } from "../context/AuthContext";
 import WeightControl from "../components/WeightControl";
 import { saveProfile } from "../utils/saveProfile";
@@ -18,7 +17,7 @@ import { toast } from "../utils/toast";
 /* -------------------------------- */
 
 export default function Linkedin() {
-  const prefs = usePreferences();
+  const { prefs, updateSection } = usePreferences();
   const { user } = useAuth();
 
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -94,19 +93,8 @@ export default function Linkedin() {
 
   /* ---------- Save Pref ---------- */
 
-  async function updatePref(key, value) {
-    const updated = {
-      ...prefs,
-      linkedin: {
-        ...prefs.linkedin,
-        [key]: value,
-      },
-    };
-
-    await supabase.from("user_preferences").upsert({
-      user_id: user.id,
-      preferences: updated,
-    });
+  function updatePref(key, value) {
+    updateSection("linkedin", key, value);
   }
 
   /* ---------- Chart ---------- */

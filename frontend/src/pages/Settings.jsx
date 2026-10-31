@@ -1,20 +1,13 @@
-import { useState } from "react";
-import axios from "axios";
-import { supabase } from "../supabase";
-import { useAuth } from "../context/AuthContext";
+import { api } from "../api/client";
+import { DEFAULT_PREFS, usePreferences } from "../hooks/usePreferences";
 import { toast } from "../utils/toast";
 
-export default function Settings() {
-  const { user } = useAuth();
+const TEMPLATE_LABELS = { ai_ml: "AI / ML Engineer", backend: "Backend Engineer", cp: "Competitive Programmer" };
 
-  const [prefs, setPrefs] = useState({
-    mode: "default",
-    platform_weights: {
-      github: 40,
-      leetcode: 40,
-      linkedin: 20
-    }
-  });
+export default function Settings() {
+  const { prefs, updatePrefs, savePrefs: persistPrefs } = usePreferences();
+  // Edits on this page are drafts until the user clicks Save
+  const setPrefs = (next) => updatePrefs(next, { persist: false });
 
   /* ---------------- SAVE ---------------- */
 
@@ -29,27 +22,30 @@ export default function Settings() {
       return;
     }
 
-    await supabase.from("user_preferences").upsert({
-      user_id: user.id,
-      preferences: prefs
-    });
-
-    toast.success("✅ Preferences Saved");
+    if (prefs.mode === "default") {
+      updatePrefs(DEFAULT_PREFS, { persist: false });
+    }
+    const { error } = await persistPrefs();
+    if (error) {
+      toast.error("Couldn't save preferences. Please try again.");
+      return;
+    }
+    toast.success("✅ Preferences saved");
   }
 
   /* ---------------- APPLY TEMPLATE ---------------- */
 
   async function applyTemplate(name) {
-    const res = await axios.get(
-      `http://127.0.0.1:8000/templates/${name}`
-    );
-
-    await supabase.from("user_preferences").upsert({
-      user_id: user.id,
-      preferences: res.data
-    });
-
-    toast.success(`✅ Applied ${name} template`);
+    try {
+      const res = await api.get(`/templates/${name}`);
+      // Templates only cover per-platform weights; keep the platform split
+      updatePrefs((prev) => ({ ...prev, ...res.data, mode: "custom" }), { persist: false });
+      const { error } = await persistPrefs();
+      if (error) throw error;
+      toast.success(`✅ Applied ${TEMPLATE_LABELS[name] || name} template`);
+    } catch (err) {
+      toast.error(err.message || "Couldn't apply template");
+    }
   }
 
   const total =
@@ -255,14 +251,7 @@ export default function Settings() {
       {/* RESET */}
       <button
         onClick={() =>
-          setPrefs({
-            mode: "default",
-            platform_weights: {
-              github: 40,
-              leetcode: 40,
-              linkedin: 20
-            }
-          })
+          setPrefs(DEFAULT_PREFS)
         }
         className="text-sm text-red-400 underline"
       >

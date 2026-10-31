@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "../supabase";
+import { api } from "../api/client";
 import { motion } from "framer-motion";
 import Loading from "../components/Loading";
 import { toast } from "../utils/toast";
@@ -37,47 +37,15 @@ export default function Search() {
     setProfile(null);
 
     try {
-      if (type === "id") {
-        // Search by profile ID
-        const { data, error: fetchError } = await supabase
-          .from("saved_profiles")
-          .select("*")
-          .eq("id", value.trim())
-          .single();
-
-        if (fetchError) throw fetchError;
-        if (!data) {
-          setError("Profile not found");
-          return;
-        }
-
-        setProfile(data);
-      } else {
-        // Search by shared link
-        // Extract ID from link if it's a full URL
-        const linkValue = value.trim();
-        let profileId = linkValue;
-        
-        if (linkValue.includes("/profile/")) {
-          profileId = linkValue.split("/profile/")[1].split("?")[0];
-        } else if (linkValue.includes("id=")) {
-          profileId = linkValue.split("id=")[1].split("&")[0];
-        }
-
-        const { data, error: fetchError } = await supabase
-          .from("saved_profiles")
-          .select("*")
-          .eq("id", profileId)
-          .single();
-
-        if (fetchError) throw fetchError;
-        if (!data) {
-          setError("Profile not found. Please check the link or ID.");
-          return;
-        }
-
-        setProfile(data);
+      // Accept a full share link (…/search?id=<uuid>, older …/profile/<uuid>) or a bare ID
+      const raw = value.trim();
+      let profileId = raw;
+      if (type !== "id") {
+        if (raw.includes("id=")) profileId = raw.split("id=")[1].split("&")[0];
+        else if (raw.includes("/profile/")) profileId = raw.split("/profile/")[1].split(/[?#/]/)[0];
       }
+      const res = await api.get(`/profiles/shared/${encodeURIComponent(profileId)}`);
+      setProfile(res.data);
     } catch (err) {
       console.error("Search error:", err);
       setError(err.message || "Failed to search profile");

@@ -23,7 +23,7 @@ import { toast } from "../utils/toast";
 
 export default function FullScore() {
   const { user } = useAuth();
-  const prefs = usePreferences();
+  const { prefs } = usePreferences();
 
   const [github, setGithub] = useState("");
   const [leetcode, setLeetcode] = useState("");

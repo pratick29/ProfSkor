@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { getSavedProfiles } from "../utils/saveProfile";
+import { deleteProfile, getSavedProfiles, shareLink } from "../utils/saveProfile";
 import CountUp from "react-countup";
 import { motion } from "framer-motion";
 import { toast } from "../utils/toast";
@@ -101,7 +101,24 @@ export default function History() {
       {/* PROFILES LIST */}
       <div className="space-y-6">
         {currentProfiles.map((profile, i) => (
-          <ProfileCard key={profile.id} profile={profile} index={i} type={activeTab} />
+          <ProfileCard
+            key={profile.id}
+            profile={profile}
+            index={i}
+            type={activeTab}
+            onDelete={async () => {
+              const result = await deleteProfile(user.id, profile.id);
+              if (!result.success) {
+                toast.error(`Couldn't delete: ${result.error}`);
+                return;
+              }
+              setProfiles((prev) => ({
+                ...prev,
+                [activeTab]: prev[activeTab].filter((p) => p.id !== profile.id),
+              }));
+              toast.success("Profile deleted");
+            }}
+          />
         ))}
       </div>
 
@@ -111,7 +128,7 @@ export default function History() {
 
 /* --------------------------------------------- */
 
-function ProfileCard({ profile, index, type }) {
+function ProfileCard({ profile, index, type, onDelete }) {
   const data = profile.profile_data || {};
   const score = data.score || data.scores?.overall || 0;
 
@@ -175,9 +192,18 @@ function ProfileCard({ profile, index, type }) {
       {/* ACTIONS */}
       <div className="flex gap-2 mt-4 pt-4 border-t border-white/10">
         <button
-          onClick={() => {
-            navigator.clipboard.writeText(`${window.location.origin}/profile/${profile.id}`);
-            toast.success("Profile link copied!");
+          onClick={async () => {
+            const link = shareLink(profile);
+            if (!link) {
+              toast("Guest profiles are only stored in this browser. Sign in to get a shareable link.");
+              return;
+            }
+            try {
+              await navigator.clipboard.writeText(link);
+              toast.success("Profile link copied!");
+            } catch {
+              toast(link);
+            }
           }}
           className="text-sm px-4 py-2 bg-teal-500/20 hover:bg-teal-500/30 rounded-lg"
         >
@@ -186,8 +212,7 @@ function ProfileCard({ profile, index, type }) {
         <button
           onClick={() => {
             if (confirm("Delete this profile?")) {
-              // TODO: Implement delete
-              toast("Delete functionality coming soon");
+              onDelete();
             }
           }}
           className="text-sm px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg"

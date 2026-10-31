@@ -1,10 +1,9 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import CountUp from "react-countup";
 import { motion } from "framer-motion";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { usePreferences } from "../hooks/usePreferences";
-import { supabase } from "../supabase";
 import WeightControl from "../components/WeightControl";
 import { saveProfile } from "../utils/saveProfile";
 
@@ -25,7 +24,7 @@ import { toast } from "../utils/toast";
 
 export default function Github() {
   const { user } = useAuth();
-  const prefs = usePreferences();
+  const { prefs, updateSection } = usePreferences();
 
   const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,7 +32,6 @@ export default function Github() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
   const [profileName, setProfileName] = useState("");
-  const saveTimer = useRef(null);
 
   if (!prefs?.github) return null;
 
@@ -57,7 +55,7 @@ export default function Github() {
       }
 
       setData(res.data);
-      setProfileName(`GitHub - ${username.trim()}`);
+      setProfileName(`GitHub - ${res.data.username}`);
     } catch (err) {
       toast.error(err.message || "Could not score this profile. Please try again.");
     } finally {
@@ -74,13 +72,13 @@ export default function Github() {
     }
 
     setSaving(true);
-    const name = profileName.trim() || `GitHub - ${username} - ${new Date().toLocaleDateString()}`;
+    const name = profileName.trim() || `GitHub - ${data.username} - ${new Date().toLocaleDateString()}`;
     
     const result = await saveProfile(
       user.id,
       "github",
       {
-        username: username,
+        username: data.username,
         score: data.score,
         breakdown: data.breakdown,
         suggestions: data.suggestions,
@@ -101,24 +99,7 @@ export default function Github() {
   /* ================= PREF UPDATE ===================== */
 
   function updatePref(key, value) {
-    const updated = {
-      ...prefs,
-      github: {
-        ...prefs.github,
-        [key]: value
-      }
-    };
-
-    clearTimeout(saveTimer.current);
-
-    saveTimer.current = setTimeout(async () => {
-      await supabase
-        .from("user_preferences")
-        .upsert({
-          user_id: user.id,
-          preferences: updated
-        });
-    }, 400);
+    updateSection("github", key, value);
   }
 
   /* ===================== DATA ======================== */
@@ -332,18 +313,18 @@ export default function Github() {
           )}
 
           {/* GITHUB HEATMAP */}
-          {username && (
+          {data?.username && (
             <div className="card">
               <h3 className="font-semibold mb-4">📅 Contribution Activity</h3>
               <div className="overflow-x-auto">
                 <img
-                  src={`https://ghchart.rshah.org/14b8a6/${username}`}
+                  src={`https://ghchart.rshah.org/14b8a6/${data.username}`}
                   alt="GitHub contribution graph"
                   className="w-full max-w-5xl mx-auto rounded-lg"
                 />
               </div>
               <p className="text-xs text-slate-400 mt-2 text-center">
-                View full profile: <a href={`https://github.com/${username}`} target="_blank" rel="noopener noreferrer" className="text-teal-400 hover:underline">github.com/{username}</a>
+                View full profile: <a href={`https://github.com/${data.username}`} target="_blank" rel="noopener noreferrer" className="text-teal-400 hover:underline">github.com/{data.username}</a>
               </p>
             </div>
           )}
@@ -415,7 +396,7 @@ export default function Github() {
                 {data.highlights?.map((r, i) => (
                   <a
                     key={i}
-                    href={`https://github.com/${username}/${r.name}`}
+                    href={r.url || `https://github.com/${data.username}/${r.name}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="block bg-white/5 rounded-xl p-4 border border-white/10 hover:bg-white/10 transition"

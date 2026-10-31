@@ -79,3 +79,31 @@ export async function getSavedProfiles(userId, profileType = null) {
     return { success: false, error: error.message, data: [] };
   }
 }
+
+/**
+ * Delete a saved profile (server for signed-in users, localStorage for guests)
+ * @returns {Promise<object>} { success, error? }
+ */
+export async function deleteProfile(userId, profileId) {
+  if (userId === "guest") {
+    try {
+      const stored = JSON.parse(localStorage.getItem(GUEST_STORAGE_KEY) || "[]");
+      localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(stored.filter((p) => p.id !== profileId)));
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
+  try {
+    await api.delete(`/profiles/${profileId}`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/** Shareable link for a saved profile, or null for guest profiles that only exist in this browser. */
+export function shareLink(profile) {
+  if (!profile?.id || String(profile.id).startsWith("guest_")) return null;
+  return `${window.location.origin}/search?id=${profile.id}`;
+}

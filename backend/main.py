@@ -1,4 +1,5 @@
 import logging
+import uuid
 from io import BytesIO
 from typing import Any, Dict, List, Optional
 
@@ -267,6 +268,57 @@ def save_profile(payload: SaveProfileRequest, request: Request, auth_user=Depend
 @app.get("/profiles/history")
 def profile_history(profile_type: Optional[str] = None, limit: int = 100, auth_user=Depends(current_user_dep)):
     return {"data": list_saved_profiles(supabase, auth_user["id"], profile_type, min(max(limit, 1), 500))}
+
+
+@app.get("/profiles/shared/{profile_id}")
+def shared_profile(profile_id: str, request: Request):
+    """Anyone with a saved profile's link (its unguessable UUID) can view it."""
+    enforce_rate_limit(request)
+    try:
+        uuid.UUID(profile_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    try:
+        result = (
+            supabase.table("saved_profiles")
+            .select("id, profile_type, profile_name, profile_data, created_at")
+            .eq("id", profile_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception:
+        log.exception("Failed to load shared profile")
+        raise HTTPException(status_code=500, detail="Could not load profile")
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return result.data[0]
+
+
+@app.delete("/profiles/{profile_id}")
+def delete_profile(profile_id: str, request: Request, auth_user=Depends(current_user_dep)):
+    enforce_rate_limit(request)
+    try:
+        uuid.UUID(profile_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    try:
+        result = (
+            supabase.table("saved_profiles")
+            .delete()
+            .eq("id", profile_id)
+            .eq("user_id", auth_user["id"])  # owners can only delete their own
+            .execute()
+        )
+    except Exception:
+        log.exception("Failed to delete profile")
+        raise HTTPException(status_code=500, detail="Could not delete profile")
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return {"success": True}
 
 
 @app.get("/scores/history")

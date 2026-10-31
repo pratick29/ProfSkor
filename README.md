@@ -13,7 +13,8 @@ ProfSkor scores your GitHub, LeetCode and LinkedIn profiles plus your resume, th
 | **LinkedIn checklist** | Profile completeness and posting frequency, with a tip for each gap |
 | **Resume review** | Upload a PDF and get an AI review (OpenAI) or rule-based checks: contact info, sections, quantified impact, action verbs, length. Paste a job description to see which keywords you're missing |
 | **Full score** | Weighted overall score across platforms; weights can be adjusted per role |
-| **History & analytics** | Saved scores and progress over time (signed-in users) |
+| **History & analytics** | Saved scores and progress over time; delete saved profiles |
+| **Shareable links** | Anyone with a saved profile's link (`/search?id=…`) can view it. The link is an unguessable UUID; guest profiles stay in the browser and can't be shared |
 | **Guest mode** | Try everything without an account; results stay in your browser |
 
 Profile URLs work as input too: `https://github.com/you` and `https://leetcode.com/u/you/` are accepted.
