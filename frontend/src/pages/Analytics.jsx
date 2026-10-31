@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { Navigate } from "react-router-dom";
 import { getSavedProfiles } from "../utils/saveProfile";
 import { motion } from "framer-motion";
 
@@ -23,7 +22,6 @@ import {
 
 export default function Analytics() {
   const { user } = useAuth();
-  if (!user) return <Navigate to="/login" />;
 
   const [activeTab, setActiveTab] = useState("github");
   const [profiles, setProfiles] = useState({

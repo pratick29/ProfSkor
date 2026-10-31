@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabase";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
+import { toast } from "../utils/toast";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -30,7 +31,7 @@ export default function Login() {
         if (signUpError) throw signUpError;
         if (data.user) {
           localStorage.setItem("userType", userType);
-          alert("Account created! Please check your email to verify.");
+          toast.success("Account created! Please check your email to verify.");
         }
       } else {
         const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });

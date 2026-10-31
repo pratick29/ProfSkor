@@ -18,6 +18,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import { toast } from "../utils/toast";
 
 /* ----------------------------------- */
 
@@ -37,7 +38,7 @@ export default function Leetcode() {
   /* ---------- Score ---------- */
 
   async function handleScore() {
-    if (!username.trim()) return alert("Enter LeetCode username");
+    if (!username.trim()) return toast("Enter LeetCode username");
 
     setLoading(true);
     setData(null);
@@ -49,7 +50,7 @@ export default function Leetcode() {
       });
 
       if (res.data?.error) {
-        alert(res.data.error);
+        toast(res.data.error);
         return;
       }
 
@@ -57,7 +58,7 @@ export default function Leetcode() {
       setProfileName(`LeetCode - ${username.trim()}`);
     } catch (err) {
       console.log(err);
-      alert("Backend error");
+      toast.error(err.message || "Could not score this profile. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -67,7 +68,7 @@ export default function Leetcode() {
 
   async function handleSave() {
     if (!data || !user) {
-      alert("Please generate a score first and ensure you're logged in");
+      toast("Please generate a score first and ensure you're logged in");
       return;
     }
 
@@ -89,9 +90,9 @@ export default function Leetcode() {
     );
 
     if (result.success) {
-      alert("Profile saved successfully!");
+      toast.success("Profile saved successfully!");
     } else {
-      alert(`Failed to save: ${result.error}`);
+      toast.error(`Failed to save: ${result.error}`);
     }
     setSaving(false);
   }

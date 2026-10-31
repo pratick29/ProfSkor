@@ -2,6 +2,7 @@ import { useState } from "react";
 import axios from "axios";
 import { supabase } from "../supabase";
 import { useAuth } from "../context/AuthContext";
+import { toast } from "../utils/toast";
 
 export default function Settings() {
   const { user } = useAuth();
@@ -24,7 +25,7 @@ export default function Settings() {
       prefs.platform_weights.linkedin;
 
     if (prefs.mode === "custom" && total !== 100) {
-      alert("Platform weights must total 100%");
+      toast.error("Platform weights must total 100%");
       return;
     }
 
@@ -33,7 +34,7 @@ export default function Settings() {
       preferences: prefs
     });
 
-    alert("✅ Preferences Saved");
+    toast.success("✅ Preferences Saved");
   }
 
   /* ---------------- APPLY TEMPLATE ---------------- */
@@ -48,7 +49,7 @@ export default function Settings() {
       preferences: res.data
     });
 
-    alert(`✅ Applied ${name} template`);
+    toast.success(`✅ Applied ${name} template`);
   }
 
   const total =

@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { usePreferences } from "../hooks/usePreferences";
 import { api } from "../api/client";
@@ -18,13 +17,13 @@ import {
   PolarRadiusAxis,
   ResponsiveContainer
 } from "recharts";
+import { toast } from "../utils/toast";
 
 /* ================================================= */
 
 export default function FullScore() {
   const { user } = useAuth();
   const prefs = usePreferences();
-  if (!user) return <Navigate to="/login" />;
 
   const [github, setGithub] = useState("");
   const [leetcode, setLeetcode] = useState("");
@@ -52,13 +51,10 @@ export default function FullScore() {
     try {
       const el = document.getElementById("report");
       if (!el) {
-        alert("Report content not found");
+        toast.error("Report content not found");
         return;
       }
 
-      // Show loading message
-      const originalText = document.querySelector('button:has-text("📄 Export PDF")')?.textContent;
-      
       const canvas = await html2canvas(el, { 
         scale: 2,
         useCORS: true,
@@ -82,7 +78,7 @@ export default function FullScore() {
       pdf.save(`ProfSkor_Report_${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (error) {
       console.error("PDF export error:", error);
-      alert("Failed to export PDF. Please try again.");
+      toast.error("Failed to export PDF. Please try again.");
     }
   }
 
@@ -100,7 +96,6 @@ export default function FullScore() {
 
     try {
       const response = await api.post("/score", {
-        user_id: user.id,
         role: role,
         github_username: github.trim(),
         leetcode_username: leetcode.trim(),
@@ -122,12 +117,12 @@ export default function FullScore() {
           id: user.id,
           name: user.email?.split("@")[0] || "User",
           headline: role,
-          photo: `https://ui-avatars.com/api/?name=${encodeURIComponent(github || leetcode)}&background=14b8a6&color=fff`
+          photo: github
+            ? `https://github.com/${encodeURIComponent(github.trim())}.png?size=200`
+            : `https://ui-avatars.com/api/?name=${encodeURIComponent(leetcode)}&background=14b8a6&color=fff`
         },
 
-        percentile: Math.round(100 - (apiData.scores.overall / 100) * 20), // Estimate
-
-        history: { previous: apiData.scores.overall - 5 }, // Mock previous
+        warnings: apiData.warnings || [],
 
         scores: {
           overall: apiData.scores.overall,
@@ -137,9 +132,12 @@ export default function FullScore() {
         },
 
         consistency: {
-          days_per_week: apiData.leetcode_meta?.streak ? Math.min(apiData.leetcode_meta.streak / 7, 7) : 3,
-          active_weeks: apiData.leetcode_meta?.streak ? Math.floor(apiData.leetcode_meta.streak / 7) : 10,
-          momentum: apiData.scores.overall > 70 ? "increasing" : "stable"
+          github_active_weeks: apiData.github_meta?.contributions
+            ? `${apiData.github_meta.contributions.active_weeks} / ${apiData.github_meta.contributions.total_weeks}`
+            : null,
+          github_recent_repos: apiData.github_meta?.repos_pushed_last_90_days ?? null,
+          leetcode_active_days_90: apiData.leetcode_meta?.active_days_last_90 ?? null,
+          leetcode_current_streak: apiData.leetcode_meta?.current_streak ?? null
         },
 
         summary: generateSummary(apiData),
@@ -151,9 +149,9 @@ export default function FullScore() {
         verdict: generateVerdict(apiData),
 
         github: {
-          repos: apiData.breakdown?.github?.highlights?.length || 0,
-          stars: apiData.breakdown?.github?.highlights?.reduce((sum, r) => sum + (r.stars || 0), 0) || 0,
-          weekly_commits: 0, // Not available from API
+          repos: apiData.github_meta?.original_repos || 0,
+          stars: apiData.github_meta?.total_stars || 0,
+          contributions: apiData.github_meta?.contributions?.total ?? null,
           calendar: github ? `https://ghchart.rshah.org/14b8a6/${github}` : "",
           top_repos: apiData.breakdown?.github?.highlights || [],
           suggestions: apiData.suggestions?.filter(s => s.includes("GitHub")) || []
@@ -164,8 +162,9 @@ export default function FullScore() {
           easy: apiData.leetcode_meta?.easy || 0,
           medium: apiData.leetcode_meta?.medium || 0,
           hard: apiData.leetcode_meta?.hard || 0,
-          streak: apiData.leetcode_meta?.streak || 0,
+          streak: apiData.leetcode_meta?.current_streak || 0,
           rating: apiData.leetcode_meta?.ranking || 0,
+          contest_rating: apiData.leetcode_meta?.contest_rating ?? null,
           topics: {} // Not available from API
         },
 
@@ -192,7 +191,7 @@ export default function FullScore() {
       setProfileName(`FullScore - ${github || leetcode || "Profile"} - ${new Date().toLocaleDateString()}`);
     } catch (err) {
       console.error("Error generating score:", err);
-      setError(err.response?.data?.error || "Failed to generate score. Please check your inputs and try again.");
+      setError(err.message || "Failed to generate score. Please check your inputs and try again.");
     } finally {
       setLoading(false);
     }
@@ -202,7 +201,7 @@ export default function FullScore() {
 
   async function handleSave() {
     if (!data || !user) {
-      alert("Please generate a score first and ensure you're logged in");
+      toast("Please generate a score first and ensure you're logged in");
       return;
     }
 
@@ -225,9 +224,9 @@ export default function FullScore() {
     );
 
     if (result.success) {
-      alert("Profile saved successfully!");
+      toast.success("Profile saved successfully!");
     } else {
-      alert(`Failed to save: ${result.error}`);
+      toast.error(`Failed to save: ${result.error}`);
     }
     setSaving(false);
   }
@@ -526,17 +525,10 @@ function CandidateHeader({ data }) {
         <h2 className="text-2xl font-bold">{data.candidate.name}</h2>
         <p className="text-slate-400">{data.candidate.headline}</p>
         <p className="text-green-400 mt-2">Overall {data.scores.overall}/100</p>
-        <p className="text-slate-400">Top {data.percentile}% percentile</p>
+        {data.warnings?.map((w) => (
+          <p key={w} className="text-amber-300 text-sm mt-1">⚠ {w}</p>
+        ))}
       </div>
-      <button
-        onClick={() => {
-          navigator.clipboard.writeText(window.location.origin + "/candidate/" + data.candidate.id);
-          alert("Link copied");
-        }}
-        className="bg-white/10 px-4 py-2 rounded"
-      >
-        🔗 Share
-      </button>
     </div>
   );
 }
@@ -576,9 +568,10 @@ function ConsistencyPanel({ c }) {
   return (
     <Card>
       <h3>Consistency</h3>
-      <p>Days / Week: {c.days_per_week}</p>
-      <p>Active Weeks: {c.active_weeks}</p>
-      <p>Momentum: {c.momentum}</p>
+      {c.github_active_weeks && <p>GitHub active weeks (last year): {c.github_active_weeks}</p>}
+      {c.github_recent_repos !== null && <p>GitHub repos updated in last 90 days: {c.github_recent_repos}</p>}
+      {c.leetcode_active_days_90 !== null && <p>LeetCode active days (last 90): {c.leetcode_active_days_90}</p>}
+      {c.leetcode_current_streak !== null && <p>LeetCode current streak: {c.leetcode_current_streak} days</p>}
     </Card>
   );
 }
@@ -623,8 +616,8 @@ function GitHubDeep({ github }) {
             <p className="text-3xl font-bold">{github.stars}</p>
           </div>
           <div className="bg-white/5 rounded-lg p-4">
-            <p className="text-slate-400 text-sm">Weekly Commits</p>
-            <p className="text-3xl font-bold">{github.weekly_commits || "N/A"}</p>
+            <p className="text-slate-400 text-sm">Contributions (last year)</p>
+            <p className="text-3xl font-bold">{github.contributions ?? "N/A"}</p>
           </div>
         </div>
         

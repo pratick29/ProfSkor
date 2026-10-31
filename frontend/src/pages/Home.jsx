@@ -119,7 +119,7 @@ export default function Home() {
                 { icon: "≋", title: "Compare", desc: "Benchmark against others" },
                 { icon: "◆", title: "PDF Reports", desc: "Download & share results" }
               ]
-          ).map((f, i) => (
+          ).map((f) => (
             <motion.div
               key={f.title}
               whileHover={{ y: -4 }}

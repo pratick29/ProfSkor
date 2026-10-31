@@ -19,6 +19,7 @@ import {
   Pie,
   Cell
 } from "recharts";
+import { toast } from "../utils/toast";
 
 /* ===================================================== */
 
@@ -39,7 +40,7 @@ export default function Github() {
   /* ===================== SCORE ======================= */
 
   async function handleScore() {
-    if (!username.trim()) return alert("Enter GitHub username");
+    if (!username.trim()) return toast("Enter GitHub username");
 
     setLoading(true);
     setData(null);
@@ -51,14 +52,14 @@ export default function Github() {
       });
 
       if (res.data?.error) {
-        alert(res.data.error);
+        toast(res.data.error);
         return;
       }
 
       setData(res.data);
       setProfileName(`GitHub - ${username.trim()}`);
-    } catch {
-      alert("Backend error. Is FastAPI running?");
+    } catch (err) {
+      toast.error(err.message || "Could not score this profile. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -68,7 +69,7 @@ export default function Github() {
 
   async function handleSave() {
     if (!data || !user) {
-      alert("Please generate a score first and ensure you're logged in");
+      toast("Please generate a score first and ensure you're logged in");
       return;
     }
 
@@ -90,9 +91,9 @@ export default function Github() {
     );
 
     if (result.success) {
-      alert("Profile saved successfully!");
+      toast.success("Profile saved successfully!");
     } else {
-      alert(`Failed to save: ${result.error}`);
+      toast.error(`Failed to save: ${result.error}`);
     }
     setSaving(false);
   }
@@ -295,7 +296,7 @@ export default function Github() {
           <div className="grid md:grid-cols-4 gap-4">
             <ScoreCard label="GitHub Score" value={data.score} big />
             {Object.entries(data.breakdown).map(([k, v]) => (
-              <ScoreCard key={k} label={k} value={v} />
+              <ScoreCard key={k} label={k} value={v} max={prefs.github?.[k.toLowerCase()] ?? 100} />
             ))}
           </div>
 
@@ -445,7 +446,7 @@ export default function Github() {
 
 /* ===================================================== */
 
-function ScoreCard({ label, value, big }) {
+function ScoreCard({ label, value, big, max = 100 }) {
   return (
     <motion.div
       whileHover={{ scale: 1.05 }}
@@ -453,7 +454,7 @@ function ScoreCard({ label, value, big }) {
     >
       <p className="text-slate-400 text-sm">{label}</p>
       <p className={`${big ? "text-4xl" : "text-3xl"} font-bold mt-1`}>
-        <CountUp end={Number(value) || 0} duration={1.2} /> /100
+        <CountUp end={Number(value) || 0} duration={1.2} /> /{Math.round(max)}
       </p>
     </motion.div>
   );

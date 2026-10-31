@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer
 } from "recharts";
+import { toast } from "../utils/toast";
 
 /* -------------------------------- */
 
@@ -34,7 +35,7 @@ export default function Compare() {
 
   async function handleCompare() {
     if (!left.github || !right.github) {
-      alert("Enter GitHub usernames");
+      toast("Enter GitHub usernames");
       return;
     }
 
@@ -50,7 +51,7 @@ export default function Compare() {
       setData({ left: a, right: b });
     } catch (err) {
       console.log(err);
-      alert("Backend error");
+      toast.error(err.message || "Comparison failed. Please try again.");
     } finally {
       setLoading(false);
     }

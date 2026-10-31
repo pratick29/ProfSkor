@@ -1,62 +1,43 @@
-import os
+import logging
 from io import BytesIO
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-try:
-    from auth import get_optional_user, require_admin, require_user
-    from core.default_preferences import DEFAULT_PREFS
-    from core.leetcode_scoring import leetcode_score
-    from core.scoring import github_score
-    from core.weight_templates import WEIGHT_TEMPLATES
-    from db import get_supabase_client, insert_resume_analysis, insert_score_history, list_saved_profiles, list_scores
-    from fetchers.github_fetcher import fetch_github_repos, fetch_github_user
-    from fetchers.leetcode_fetcher import fetch_leetcode_user
-    from rate_limit import enforce_rate_limit
-    from resume_service import MAX_FILE_SIZE_BYTES, analyze_resume_text, extract_text_from_pdf
-    from schemas import GithubScoreRequest, LeetcodeScoreRequest, LinkedinInput, LinkedinScoreRequest, SaveProfileRequest, ScoreRequest
-except ModuleNotFoundError:
-    from backend.auth import get_optional_user, require_admin, require_user
-    from backend.core.default_preferences import DEFAULT_PREFS
-    from backend.core.leetcode_scoring import leetcode_score
-    from backend.core.scoring import github_score
-    from backend.core.weight_templates import WEIGHT_TEMPLATES
-    from backend.db import get_supabase_client, insert_resume_analysis, insert_score_history, list_saved_profiles, list_scores
-    from backend.fetchers.github_fetcher import fetch_github_repos, fetch_github_user
-    from backend.fetchers.leetcode_fetcher import fetch_leetcode_user
-    from backend.rate_limit import enforce_rate_limit
-    from backend.resume_service import MAX_FILE_SIZE_BYTES, analyze_resume_text, extract_text_from_pdf
-    from backend.schemas import (
-        GithubScoreRequest,
-        LeetcodeScoreRequest,
-        LinkedinInput,
-        LinkedinScoreRequest,
-        SaveProfileRequest,
-        ScoreRequest,
-    )
+from auth import get_optional_user, require_admin, require_user
+from config import ALLOWED_ORIGINS, GITHUB_TOKEN, LOG_LEVEL, OPENAI_API_KEY
+from core.default_preferences import DEFAULT_PREFS
+from core.leetcode_scoring import leetcode_score
+from core.scoring import github_score, merged_prefs, repo_highlights
+from core.weight_templates import WEIGHT_TEMPLATES
+from db import get_supabase_client, insert_resume_analysis, insert_score_history, list_saved_profiles, list_scores
+from fetchers.github_fetcher import fetch_github_contributions, fetch_github_repos, fetch_github_user
+from fetchers.leetcode_fetcher import fetch_leetcode_user
+from rate_limit import enforce_rate_limit
+from resume_service import MAX_FILE_SIZE_BYTES, analyze_resume_text, extract_text_from_pdf
+from schemas import GithubScoreRequest, LeetcodeScoreRequest, LinkedinInput, LinkedinScoreRequest, SaveProfileRequest, ScoreRequest
 
-env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(dotenv_path=env_path)
+logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("profskor")
 
-app = FastAPI(title="Career Profile Score API", version="2.0.0")
+app = FastAPI(title="ProfSkor API", version="3.0.0")
 supabase = get_supabase_client()
-
-cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
-extra_origins = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "").split(",") if origin.strip()]
-if extra_origins:
-    cors_origins.extend(extra_origins)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_error(request: Request, exc: Exception):
+    log.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Something went wrong. Please try again."})
 
 
 def normalize_weights(raw_weights: Dict[str, Any]) -> Dict[str, float]:
@@ -70,16 +51,64 @@ def normalize_weights(raw_weights: Dict[str, Any]) -> Dict[str, float]:
 
 
 def safe_linkedin_score(linkedin: LinkedinInput, prefs: Dict[str, Any]) -> float:
-    lp = prefs.get("linkedin", DEFAULT_PREFS["linkedin"])
-    score = 0.0
-    score += lp["headline"] if linkedin.has_headline else 0
-    score += lp["about"] if linkedin.has_about else 0
-    score += lp["projects"] if linkedin.has_projects else 0
-    score += lp["photo"] if linkedin.has_photo else 0
-    score += lp["experience"] if linkedin.has_experience else 0
-    posting_map = {"0 per week": 0.25, "1 per week": 0.5, "2-3 per week": 0.75, "4+ per week": 1}
-    score += posting_map.get(linkedin.posting, 0.25) * lp["posting"]
-    return min(score, 100)
+    lp = merged_prefs(prefs.get("linkedin"), "linkedin")
+    posting_map = {"0 per week": 0.0, "1 per week": 0.5, "2-3 per week": 0.85, "4+ per week": 1.0}
+    earned = (
+        (lp["headline"] if linkedin.has_headline else 0)
+        + (lp["about"] if linkedin.has_about else 0)
+        + (lp["projects"] if linkedin.has_projects else 0)
+        + (lp["photo"] if linkedin.has_photo else 0)
+        + (lp["experience"] if linkedin.has_experience else 0)
+        + posting_map.get(linkedin.posting, 0) * lp["posting"]
+    )
+    return min(earned / (sum(lp.values()) or 1) * 100, 100)
+
+
+def linkedin_suggestions(linkedin: LinkedinInput) -> List[str]:
+    tips = []
+    if not linkedin.has_headline:
+        tips.append("Write a headline that names your role and stack, e.g. 'Backend Engineer | Python, AWS'.")
+    if not linkedin.has_about:
+        tips.append("Add an About section: who you are, what you build, and what you're looking for.")
+    if not linkedin.has_projects:
+        tips.append("Add your best projects to the Featured section with links.")
+    if not linkedin.has_photo:
+        tips.append("Add a clear profile photo. Profiles with photos get far more views.")
+    if not linkedin.has_experience:
+        tips.append("List internships, freelance work, or open-source contributions under Experience.")
+    if linkedin.posting == "0 per week":
+        tips.append("Post about what you're learning or building at least once a week.")
+    return tips
+
+
+def score_github_user(username: str, prefs: Optional[Dict]) -> Dict[str, Any]:
+    user, err = fetch_github_user(username)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    repos, err = fetch_github_repos(username)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    contributions, _ = fetch_github_contributions(username)
+    score, breakdown, suggestions, meta = github_score(user, repos, prefs, contributions)
+    return {
+        "username": user.get("login", username),
+        "name": user.get("name"),
+        "avatar_url": user.get("avatar_url"),
+        "score": score,
+        "breakdown": breakdown,
+        "suggestions": suggestions,
+        "highlights": repo_highlights(repos),
+        "meta": meta,
+        "calendar": (contributions or {}).get("calendar", []),
+    }
+
+
+def score_leetcode_user(username: str, prefs: Optional[Dict]) -> Dict[str, Any]:
+    user, err = fetch_leetcode_user(username)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    score, breakdown, suggestions, meta = leetcode_score(user, prefs)
+    return {"username": user.get("username", username), "score": score, "breakdown": breakdown, "suggestions": suggestions, "meta": meta}
 
 
 def current_user_dep(authorization: Optional[str] = Header(default=None)):
@@ -96,9 +125,19 @@ def admin_user_dep(
     return require_admin(supabase, authorization, x_admin_secret)
 
 
+@app.get("/")
+def root():
+    return {"name": "ProfSkor API", "docs": "/docs", "health": "/health"}
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "supabase": bool(supabase)}
+    return {
+        "status": "ok",
+        "supabase": bool(supabase),
+        "github_token": bool(GITHUB_TOKEN),
+        "ai_resume_review": bool(OPENAI_API_KEY),
+    }
 
 
 @app.get("/templates/{name}")
@@ -111,98 +150,44 @@ def get_template(name: str):
 @app.post("/score/github")
 def score_github(payload: GithubScoreRequest, request: Request):
     enforce_rate_limit(request)
-    user, err = fetch_github_user(payload.github_username)
-    if err:
-        raise HTTPException(status_code=400, detail=err)
-    repos, err2 = fetch_github_repos(payload.github_username)
-    if err2:
-        raise HTTPException(status_code=400, detail=err2)
-    prefs = (payload.preferences or {}).get("github", DEFAULT_PREFS["github"])
-    score, breakdown, suggestions = github_score(user, repos, prefs)
-    highlights = [
-        {
-            "name": r.get("name"),
-            "stars": r.get("stargazers_count", 0),
-            "forks": r.get("forks_count", 0),
-            "language": r.get("language"),
-            "updated_at": r.get("updated_at"),
-            "description": r.get("description", ""),
-            "url": r.get("html_url", ""),
-        }
-        for r in repos[:5]
-    ]
-    return {
-        "username": payload.github_username,
-        "score": max(0, min(int(score), 100)),
-        "breakdown": breakdown,
-        "suggestions": suggestions,
-        "highlights": highlights,
-    }
+    return score_github_user(payload.github_username, (payload.preferences or {}).get("github"))
 
 
 @app.post("/score/leetcode")
 def score_leetcode(payload: LeetcodeScoreRequest, request: Request):
     enforce_rate_limit(request)
-    user, err = fetch_leetcode_user(payload.leetcode_username)
-    if err:
-        raise HTTPException(status_code=400, detail=err)
-    prefs = (payload.preferences or {}).get("leetcode", DEFAULT_PREFS["leetcode"])
-    score, breakdown, suggestions, meta = leetcode_score(user, prefs)
-    return {
-        "username": payload.leetcode_username,
-        "score": max(0, min(int(score), 100)),
-        "breakdown": breakdown,
-        "suggestions": suggestions,
-        "meta": meta,
-    }
+    return score_leetcode_user(payload.leetcode_username, (payload.preferences or {}).get("leetcode"))
 
 
 @app.post("/score/linkedin")
 def score_linkedin(payload: LinkedinScoreRequest, request: Request):
     enforce_rate_limit(request)
-    prefs = payload.preferences or DEFAULT_PREFS
-    score = safe_linkedin_score(LinkedinInput(**payload.model_dump()), prefs)
-    return {"score": max(0, min(round(score, 2), 100))}
+    linkedin = LinkedinInput(**payload.model_dump(exclude={"preferences"}))
+    score = safe_linkedin_score(linkedin, payload.preferences or DEFAULT_PREFS)
+    return {"score": round(score, 2), "suggestions": linkedin_suggestions(linkedin)}
 
 
 @app.post("/score")
 def score_profile(payload: ScoreRequest, request: Request, auth_user=Depends(optional_user_dep)):
     enforce_rate_limit(request)
     prefs = payload.preferences or DEFAULT_PREFS
-    github_score_value = leetcode_score_value = 0.0
-    github_break: Dict[str, Any] = {}
-    leetcode_break: Dict[str, Any] = {}
-    github_suggestions = []
-    leetcode_suggestions = []
-    leetcode_meta = {}
-    github_highlights = []
+    warnings: List[str] = []
+    github: Dict[str, Any] = {}
+    leetcode: Dict[str, Any] = {}
 
     if payload.github_username:
-        gh_user, err = fetch_github_user(payload.github_username)
-        if not err:
-            repos, err2 = fetch_github_repos(payload.github_username)
-            if not err2:
-                github_score_value, github_break, github_suggestions = github_score(
-                    gh_user, repos, prefs.get("github", DEFAULT_PREFS["github"])
-                )
-                github_highlights = [
-                    {
-                        "name": r.get("name"),
-                        "stars": r.get("stargazers_count", 0),
-                        "forks": r.get("forks_count", 0),
-                        "language": r.get("language"),
-                        "updated_at": r.get("updated_at"),
-                    }
-                    for r in repos[:5]
-                ]
-
+        try:
+            github = score_github_user(payload.github_username, prefs.get("github"))
+        except HTTPException as e:
+            warnings.append(f"GitHub: {e.detail}")
     if payload.leetcode_username:
-        lc_user, err = fetch_leetcode_user(payload.leetcode_username)
-        if not err:
-            leetcode_score_value, leetcode_break, leetcode_suggestions, leetcode_meta = leetcode_score(
-                lc_user, prefs.get("leetcode", DEFAULT_PREFS["leetcode"])
-            )
+        try:
+            leetcode = score_leetcode_user(payload.leetcode_username, prefs.get("leetcode"))
+        except HTTPException as e:
+            warnings.append(f"LeetCode: {e.detail}")
 
+    github_score_value = float(github.get("score", 0))
+    leetcode_score_value = float(leetcode.get("score", 0))
     linkedin_score_value = safe_linkedin_score(payload.linkedin, prefs)
     weights = normalize_weights(prefs.get("platform_weights", {}))
     overall = round(
@@ -224,12 +209,14 @@ def score_profile(payload: ScoreRequest, request: Request, auth_user=Depends(opt
                 leetcode_score_value,
                 linkedin_score_value,
             )
-        except Exception as e:
-            print(f"Error saving score history: {e}")
+        except Exception:
+            log.exception("Error saving score history")
 
-    suggestions = [f"(GitHub) {x}" for x in github_suggestions] + [f"(LeetCode) {x}" for x in leetcode_suggestions]
-    if linkedin_score_value < 70:
-        suggestions.append("(LinkedIn) Improve profile completeness")
+    suggestions = (
+        [f"(GitHub) {x}" for x in github.get("suggestions", [])]
+        + [f"(LeetCode) {x}" for x in leetcode.get("suggestions", [])]
+        + [f"(LinkedIn) {x}" for x in linkedin_suggestions(payload.linkedin)]
+    )
 
     return {
         "scores": {
@@ -238,9 +225,15 @@ def score_profile(payload: ScoreRequest, request: Request, auth_user=Depends(opt
             "leetcode": round(leetcode_score_value, 2),
             "linkedin": round(linkedin_score_value, 2),
         },
-        "breakdown": {"github": {**github_break, "highlights": github_highlights}, "leetcode": leetcode_break},
-        "leetcode_meta": leetcode_meta,
-        "suggestions": suggestions[:12],
+        "weights": weights,
+        "breakdown": {
+            "github": {**github.get("breakdown", {}), "highlights": github.get("highlights", [])},
+            "leetcode": leetcode.get("breakdown", {}),
+        },
+        "github_meta": github.get("meta", {}),
+        "leetcode_meta": leetcode.get("meta", {}),
+        "suggestions": suggestions[:15],
+        "warnings": warnings,
     }
 
 
@@ -266,18 +259,19 @@ def save_profile(payload: SaveProfileRequest, request: Request, auth_user=Depend
             .execute()
         )
         return {"success": True, "data": (result.data or [None])[0]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save profile: {e}")
+    except Exception:
+        log.exception("Failed to save profile")
+        raise HTTPException(status_code=500, detail="Failed to save profile")
 
 
 @app.get("/profiles/history")
 def profile_history(profile_type: Optional[str] = None, limit: int = 100, auth_user=Depends(current_user_dep)):
-    return {"data": list_saved_profiles(supabase, auth_user["id"], profile_type, limit)}
+    return {"data": list_saved_profiles(supabase, auth_user["id"], profile_type, min(max(limit, 1), 500))}
 
 
 @app.get("/scores/history")
 def scores_history(limit: int = 100, auth_user=Depends(current_user_dep)):
-    return {"data": list_scores(supabase, auth_user["id"], limit)}
+    return {"data": list_scores(supabase, auth_user["id"], min(max(limit, 1), 500))}
 
 
 @app.get("/me/subscription")
@@ -295,7 +289,7 @@ def my_subscription(auth_user=Depends(current_user_dep)):
         if result.data:
             return result.data[0]
     except Exception:
-        pass
+        log.exception("Failed to load subscription")
     return {"plan": "free", "status": "active", "features": {"resume_ai": True, "advanced_analytics": False, "admin": False}}
 
 
@@ -310,23 +304,30 @@ def has_feature(feature_key: str, auth_user=Depends(current_user_dep)):
 async def resume_review(
     request: Request,
     file: UploadFile = File(...),
+    job_description: str = Form(default="", max_length=10000),
     auth_user=Depends(optional_user_dep),
 ):
     enforce_rate_limit(request)
-    if not file.filename.lower().endswith(".pdf"):
+    if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
-    body = await file.read()
+    body = await file.read(MAX_FILE_SIZE_BYTES + 1)
     if len(body) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(status_code=400, detail="PDF exceeds 5MB limit")
-    text = extract_text_from_pdf(file_obj=BytesIO(body))
+    try:
+        text = extract_text_from_pdf(file_obj=BytesIO(body))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not read this PDF. Try exporting it again.")
     if not text or len(text.strip()) < 50:
-        raise HTTPException(status_code=400, detail="Could not extract meaningful text from PDF")
-    analysis = analyze_resume_text(text)
+        raise HTTPException(
+            status_code=400,
+            detail="Could not extract text from this PDF. If it's a scanned image, export a text-based PDF instead.",
+        )
+    analysis = analyze_resume_text(text, job_description)
     if auth_user:
         try:
             insert_resume_analysis(supabase, auth_user["id"], file.filename, analysis)
-        except Exception as e:
-            print(f"Error saving resume analysis: {e}")
+        except Exception:
+            log.exception("Error saving resume analysis")
     return analysis
 
 
@@ -334,22 +335,23 @@ async def resume_review(
 def admin_metrics(admin_user=Depends(admin_user_dep)):
     if not supabase:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    try:
-        score_rows = supabase.table("scores").select("id, created_at", count="exact").limit(1000).execute()
-    except Exception:
-        score_rows = type("Obj", (), {"count": 0, "data": []})()
-    try:
-        profile_rows = supabase.table("saved_profiles").select("id, profile_type", count="exact").limit(1000).execute()
-    except Exception:
-        profile_rows = type("Obj", (), {"count": 0, "data": []})()
+
+    def count(table: str, **filters) -> int:
+        try:
+            query = supabase.table(table).select("id", count="exact").limit(1)
+            for column, value in filters.items():
+                query = query.eq(column, value)
+            return query.execute().count or 0
+        except Exception:
+            log.exception("Failed to count %s", table)
+            return 0
+
     return {
         "admin": admin_user.get("id"),
-        "scores_total": score_rows.count or len(score_rows.data or []),
-        "profiles_total": profile_rows.count or len(profile_rows.data or []),
+        "scores_total": count("scores"),
+        "profiles_total": count("saved_profiles"),
+        "resume_reviews_total": count("resume_reviews"),
         "profiles_by_type": {
-            "github": len([x for x in (profile_rows.data or []) if x.get("profile_type") == "github"]),
-            "leetcode": len([x for x in (profile_rows.data or []) if x.get("profile_type") == "leetcode"]),
-            "linkedin": len([x for x in (profile_rows.data or []) if x.get("profile_type") == "linkedin"]),
-            "fullscore": len([x for x in (profile_rows.data or []) if x.get("profile_type") == "fullscore"]),
+            t: count("saved_profiles", profile_type=t) for t in ["github", "leetcode", "linkedin", "fullscore"]
         },
     }

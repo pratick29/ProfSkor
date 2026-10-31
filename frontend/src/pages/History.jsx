@@ -1,15 +1,14 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { Navigate } from "react-router-dom";
 import { getSavedProfiles } from "../utils/saveProfile";
 import CountUp from "react-countup";
 import { motion } from "framer-motion";
+import { toast } from "../utils/toast";
 
 /* --------------------------------------------- */
 
 export default function History() {
   const { user } = useAuth();
-  if (!user) return <Navigate to="/login" />;
 
   const [activeTab, setActiveTab] = useState("github");
   const [profiles, setProfiles] = useState({
@@ -178,7 +177,7 @@ function ProfileCard({ profile, index, type }) {
         <button
           onClick={() => {
             navigator.clipboard.writeText(`${window.location.origin}/profile/${profile.id}`);
-            alert("Profile link copied!");
+            toast.success("Profile link copied!");
           }}
           className="text-sm px-4 py-2 bg-teal-500/20 hover:bg-teal-500/30 rounded-lg"
         >
@@ -188,7 +187,7 @@ function ProfileCard({ profile, index, type }) {
           onClick={() => {
             if (confirm("Delete this profile?")) {
               // TODO: Implement delete
-              alert("Delete functionality coming soon");
+              toast("Delete functionality coming soon");
             }
           }}
           className="text-sm px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg"

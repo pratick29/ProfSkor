@@ -1,58 +1,90 @@
-## ProfSkor - Startup Grade Setup
+# ProfSkor
 
-Full-stack profile intelligence software with:
-- Supabase auth + Postgres persistence
-- FastAPI scoring backend with rate limiting and admin metrics
-- React frontend with protected routes and analytics/history
+**Find out how strong your developer profile looks to recruiters, and exactly what to fix.**
 
-## Local Run
+ProfSkor scores your GitHub, LeetCode and LinkedIn profiles plus your resume, then gives you specific, prioritised suggestions. It uses live data from the GitHub and LeetCode APIs.
 
-### 1) Backend
+## Features
+
+| Feature | What it does |
+|---|---|
+| **GitHub score** | Original repos (forks excluded), stars (log scale), real yearly contributions and active weeks (with a GitHub token), plus checks for missing descriptions, topics and bio |
+| **LeetCode score** | Easy / Medium / Hard solved, max and current streak, active days in the last 90, contest rating and percentile |
+| **LinkedIn checklist** | Profile completeness and posting frequency, with a tip for each gap |
+| **Resume review** | Upload a PDF and get an AI review (OpenAI) or rule-based checks: contact info, sections, quantified impact, action verbs, length. Paste a job description to see which keywords you're missing |
+| **Full score** | Weighted overall score across platforms; weights can be adjusted per role |
+| **History & analytics** | Saved scores and progress over time (signed-in users) |
+| **Guest mode** | Try everything without an account; results stay in your browser |
+
+Profile URLs work as input too: `https://github.com/you` and `https://leetcode.com/u/you/` are accepted.
+
+## How scoring works
+
+Each platform score is 0-100. Every signal earns its weight in proportion to a target value, then the total is normalised so custom weights always add up to 100.
+
+- **GitHub:** 25 original repos · 150 stars (diminishing returns) · 500 contributions/year · active in 75% of weeks. Without `GITHUB_TOKEN`, activity is estimated from repo push dates and the response says `"data_quality": "estimated"`.
+- **LeetCode:** 150 Easy · 250 Medium · 60 Hard · 60-day max streak · 40 active days in the last 90 (70%) plus contest percentile (30%).
+- **Overall:** weighted average of the platform scores (default 40% GitHub, 30% LeetCode, 30% LinkedIn).
+
+The logic is in [`backend/core/scoring.py`](backend/core/scoring.py) and [`backend/core/leetcode_scoring.py`](backend/core/leetcode_scoring.py).
+
+## Tech stack
+
+- **Frontend:** React 19, Vite, Tailwind, Recharts, Framer Motion. Deployed on Vercel.
+- **Backend:** FastAPI, Python 3.12. Deployed on Render.
+- **Data & auth:** Supabase (Postgres with row-level security, Supabase Auth).
+
+```
+frontend (React) --Bearer JWT--> backend (FastAPI) --> GitHub REST/GraphQL, LeetCode GraphQL, OpenAI
+        \                              \
+         `---- Supabase Auth            `---- Supabase Postgres (service role, server-side only)
+```
+
+## Run locally
+
+**1. Backend**
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
+.venv\Scripts\activate        # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env          # then fill in values
 cd backend
-python -m uvicorn main:app --host 127.0.0.1 --port 8001
+uvicorn main:app --reload --port 8001
 ```
 
-### 2) Frontend
+API docs: http://127.0.0.1:8001/docs. `GET /health` shows which optional features are switched on.
+
+**2. Frontend**
 
 ```bash
 cd frontend
 npm install
-npm run dev -- --host 127.0.0.1 --port 5173
+cp .env.example .env          # then fill in values
+npm run dev
 ```
 
-## Required Environment Variables
+Open http://localhost:5173.
 
-Root `.env`:
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `RATE_LIMIT` (optional, default `60`)
-- `ADMIN_API_SECRET` (optional, for admin endpoint access)
+### Environment variables
 
-Frontend `frontend/.env`:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-- `VITE_API_URL` (default `http://127.0.0.1:8001`)
+Backend (`.env` in the repo root; see [`.env.example`](.env.example)):
 
-## Supabase Bootstrap
+| Variable | Required | Purpose |
+|---|---|---|
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | For accounts/history | Database access. **Server-side only, never commit it** |
+| `GITHUB_TOKEN` | Recommended | Real contribution data and 5,000 GitHub requests/hour instead of 60. A fine-grained token with no permissions is enough |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | Optional | AI resume review; falls back to rule-based checks |
+| `CORS_ORIGINS` | In production | Your frontend URL(s), comma-separated |
+| `RATE_LIMIT`, `TRUSTED_PROXY_HOPS` | Optional | Requests/minute per client; set hops to `1` behind Render's proxy |
+| `CACHE_TTL_SECONDS` | Optional | How long GitHub/LeetCode lookups are cached (default 1 hour) |
+| `ADMIN_API_SECRET` | Optional | Lets scripts call `/admin/metrics` with an `X-Admin-Secret` header |
 
-Run SQL in Supabase SQL editor:
+Frontend (`frontend/.env`): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (the anon key, never the service role key), `VITE_API_URL`.
 
-`supabase/schema.sql`
+### Database
 
-This creates:
-- `scores`
-- `saved_profiles`
-- `user_preferences`
-- `resume_reviews`
-- `subscriptions`
-- `audit_logs`
-
-Includes indexes and row-level security policies.
+Run [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL editor. It creates the tables, indexes and row-level security policies.
 
 To make a user an admin, set their `app_metadata` (not `user_metadata`, which users can edit themselves):
 
@@ -60,17 +92,29 @@ To make a user an admin, set their `app_metadata` (not `user_metadata`, which us
 update auth.users set raw_app_meta_data = raw_app_meta_data || '{"role": "admin"}' where email = 'you@example.com';
 ```
 
-## Testing and CI
+## Tests
 
-- Backend tests: `pytest backend/test_main.py`
-- Frontend lint: `cd frontend && npm run lint`
-- Frontend build: `cd frontend && npm run build`
+```bash
+pytest backend -q             # 40+ tests, external APIs mocked
+cd frontend && npm run lint && npm run build
+```
 
-CI workflow:
-- `.github/workflows/ci.yml`
+CI runs all of these on every push ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ## Deploy
 
-- Frontend: Vercel (set frontend env vars)
-- Backend: Railway or Render (set root env vars)
-- Supabase: managed auth/database
+- **Backend → Render:** [`render.yaml`](render.yaml) is a blueprint. Add the secret env vars in the Render dashboard and set `CORS_ORIGINS` to your Vercel URL.
+- **Frontend → Vercel:** set the root directory to `frontend` and add the three `VITE_` env vars.
+- **Supabase:** run the schema, and add your Vercel URL under Auth → URL Configuration.
+
+## Security notes
+
+- The API only trusts Supabase access tokens. User IDs in headers or request bodies are ignored.
+- Admin access requires `app_metadata.role = "admin"`.
+- Rate limiting and caching are in-memory, which is fine for a single instance. Move them to Redis before running several instances.
+
+## Roadmap
+
+- Public shareable score card (`/u/username`) with an Open Graph image, and an embeddable README badge
+- Role benchmarks ("how you compare to other backend candidates")
+- Weekly progress emails

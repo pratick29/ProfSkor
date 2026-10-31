@@ -5,6 +5,7 @@ import { api } from "../api/client";
 
 export default function ResumeAI() {
   const [file, setFile] = useState(null);
+  const [jobDescription, setJobDescription] = useState("");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -15,7 +16,7 @@ export default function ResumeAI() {
       return;
     }
 
-    if (!file.name.endsWith('.pdf')) {
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
       setError("Please upload a PDF file");
       return;
     }
@@ -26,13 +27,16 @@ export default function ResumeAI() {
 
     const form = new FormData();
     form.append("file", file);
+    if (jobDescription.trim()) {
+      form.append("job_description", jobDescription.trim());
+    }
 
     try {
       const res = await api.post("/ai/resume-review", form, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
-        timeout: 30000,
+        timeout: 90000,
       });
 
       if (res.data?.error) {
@@ -43,15 +47,7 @@ export default function ResumeAI() {
       setData(res.data);
     } catch (err) {
       console.error("Resume upload error:", err);
-      if (err.response?.data?.error) {
-        setError(err.response.data.error);
-      } else if (err.code === 'ECONNABORTED') {
-        setError("Request timeout. Please try again.");
-      } else if (err.response) {
-        setError(`Server error: ${err.response.status}. Please check if the backend is running.`);
-      } else {
-        setError("Failed to upload resume. Please check your connection and try again.");
-      }
+      setError(err.message || "Failed to upload resume. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -86,6 +82,18 @@ export default function ResumeAI() {
             hover:file:bg-teal-400"
         />
 
+        <label className="block text-sm text-slate-300">
+          Job description (optional): paste one to get a tailored review and missing keywords
+        </label>
+        <textarea
+          value={jobDescription}
+          onChange={(e) => setJobDescription(e.target.value)}
+          maxLength={10000}
+          rows={5}
+          placeholder="Paste the job posting here..."
+          className="w-full rounded-xl bg-white/5 border border-white/10 p-3 text-sm text-slate-200 focus:outline-none focus:border-teal-500"
+        />
+
         <button
           onClick={handleUpload}
           disabled={loading}
@@ -116,8 +124,17 @@ export default function ResumeAI() {
           <div className="grid md:grid-cols-3 gap-4">
 
             <ScoreCard label="Resume Score" value={`${data.score}/100`} big />
+            <ScoreCard label="Review type" value={data.source === "ai" ? "AI review" : "Automated checks"} />
+            <ScoreCard label="Word count" value={data.word_count} />
 
           </div>
+
+          {data.summary && (
+            <div className="card">
+              <h3 className="font-semibold mb-2">📝 Summary</h3>
+              <p className="text-slate-300">{data.summary}</p>
+            </div>
+          )}
 
           {/* Lists */}
           <div className="grid lg:grid-cols-3 gap-6">
@@ -135,6 +152,19 @@ export default function ResumeAI() {
             <h3 className="font-semibold mb-2">🎯 Role Fit</h3>
             <p className="text-slate-300">{data.role_fit}</p>
           </div>
+
+          {data.missing_keywords?.length > 0 && (
+            <div className="card">
+              <h3 className="font-semibold mb-3">🔑 Missing keywords</h3>
+              <div className="flex flex-wrap gap-2">
+                {data.missing_keywords.map((k) => (
+                  <span key={k} className="px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-200 text-sm">
+                    {k}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
         </motion.div>
       )}

@@ -13,6 +13,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
+import { toast } from "../utils/toast";
 
 /* -------------------------------- */
 
@@ -53,7 +54,7 @@ export default function Linkedin() {
       setProfileName(`LinkedIn - ${new Date().toLocaleDateString()}`);
     } catch (err) {
       console.log(err);
-      alert("Backend error");
+      toast.error(err.message || "Could not calculate the score. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -63,7 +64,7 @@ export default function Linkedin() {
 
   async function handleSave() {
     if (!data || !user) {
-      alert("Please generate a score first and ensure you're logged in");
+      toast("Please generate a score first and ensure you're logged in");
       return;
     }
 
@@ -84,9 +85,9 @@ export default function Linkedin() {
     );
 
     if (result.success) {
-      alert("Profile saved successfully!");
+      toast.success("Profile saved successfully!");
     } else {
-      alert(`Failed to save: ${result.error}`);
+      toast.error(`Failed to save: ${result.error}`);
     }
     setSaving(false);
   }

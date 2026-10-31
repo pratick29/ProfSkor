@@ -1,16 +1,15 @@
-import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from supabase import Client, create_client
 
+from config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
+
 
 def get_supabase_client() -> Optional[Client]:
-    supabase_url = os.getenv("SUPABASE_URL", "").strip()
-    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-    if not supabase_url or not service_key:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         return None
-    return create_client(supabase_url, service_key)
+    return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 
 def insert_score_history(

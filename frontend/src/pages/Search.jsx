@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "../context/AuthContext";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../supabase";
 import { motion } from "framer-motion";
 import Loading from "../components/Loading";
+import { toast } from "../utils/toast";
 
 export default function Search() {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   
@@ -185,7 +184,7 @@ export default function Search() {
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(`${window.location.origin}/search?id=${profile.id}`);
-                  alert("Link copied!");
+                  toast.success("Link copied!");
                 }}
                 className="px-4 py-2 bg-teal-500/20 hover:bg-teal-500/30 rounded-lg"
               >

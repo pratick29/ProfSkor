@@ -16,8 +16,8 @@ const links = [
 ];
 
 export default function Sidebar() {
-  const { userType } = useAuth();
-  const visibleLinks = userType === "admin" ? [...links, { label: "Admin", path: "/admin", icon: "⎈" }] : links;
+  const { isAdmin } = useAuth();
+  const visibleLinks = isAdmin ? [...links, { label: "Admin", path: "/admin", icon: "⎈" }] : links;
 
   return (
     <aside className="w-56 md:w-64 shrink-0 border-r border-white/[0.06] bg-[#0a0a0f]/80 backdrop-blur-xl">

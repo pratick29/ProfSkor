@@ -26,7 +26,7 @@ export default function App() {
         <Route path="/github" element={<Github />} />
         <Route path="/leetcode" element={<Leetcode />} />
         <Route path="/linkedin" element={<Linkedin />} />
-        <Route path="/full" element={<FullScore />} />
+        <Route path="/full" element={<ProtectedRoute><FullScore /></ProtectedRoute>} />
         <Route path="/compare" element={<Compare />} />
         <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />

@@ -1,7 +1,24 @@
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
+
+GITHUB_USERNAME_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
+LEETCODE_USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,40}$")
+
+
+def clean_username(value: str, pattern: re.Pattern, platform: str, host: str) -> str:
+    """Accept a bare username, '@name', or a pasted profile URL like https://github.com/name/."""
+    value = (value or "").strip().lstrip("@")
+    url = re.match(rf"^(?:https?://)?(?:www\.)?{re.escape(host)}/(.*)$", value, re.IGNORECASE)
+    if url:
+        # LeetCode profile URLs look like leetcode.com/u/<name>/
+        segments = [p for p in url.group(1).split("/") if p and p != "u"]
+        value = segments[0] if segments else ""
+    if value and not pattern.match(value):
+        raise ValueError(f"'{value}' is not a valid {platform} username")
+    return value
 
 
 PostingFrequency = Literal["0 per week", "1 per week", "2-3 per week", "4+ per week"]
@@ -20,36 +37,47 @@ class LinkedinInput(BaseModel):
 class ScoreRequest(BaseModel):
     # Ignored: the user is taken from the auth token. Kept so older clients don't get a 422.
     user_id: Optional[str] = Field(default=None, max_length=128)
-    role: str = Field(min_length=1, max_length=120)
-    github_username: str = ""
-    leetcode_username: str = ""
+    role: str = Field(default="general", max_length=120)
+    github_username: str = Field(default="", max_length=200)
+    leetcode_username: str = Field(default="", max_length=200)
     linkedin: LinkedinInput = Field(default_factory=LinkedinInput)
-    preferences: Optional[Dict[str, Any]] = None
-
-    @field_validator("github_username", "leetcode_username")
-    @classmethod
-    def strip_usernames(cls, value: str) -> str:
-        return value.strip()
-
-
-class GithubScoreRequest(BaseModel):
-    github_username: str = Field(min_length=1, max_length=120)
     preferences: Optional[Dict[str, Any]] = None
 
     @field_validator("github_username")
     @classmethod
-    def strip_username(cls, value: str) -> str:
-        return value.strip()
+    def clean_github(cls, value: str) -> str:
+        return clean_username(value, GITHUB_USERNAME_RE, "GitHub", "github.com")
+
+    @field_validator("leetcode_username")
+    @classmethod
+    def clean_leetcode(cls, value: str) -> str:
+        return clean_username(value, LEETCODE_USERNAME_RE, "LeetCode", "leetcode.com")
+
+
+class GithubScoreRequest(BaseModel):
+    github_username: str = Field(min_length=1, max_length=200)
+    preferences: Optional[Dict[str, Any]] = None
+
+    @field_validator("github_username")
+    @classmethod
+    def clean_github(cls, value: str) -> str:
+        value = clean_username(value, GITHUB_USERNAME_RE, "GitHub", "github.com")
+        if not value:
+            raise ValueError("GitHub username is required")
+        return value
 
 
 class LeetcodeScoreRequest(BaseModel):
-    leetcode_username: str = Field(min_length=1, max_length=120)
+    leetcode_username: str = Field(min_length=1, max_length=200)
     preferences: Optional[Dict[str, Any]] = None
 
     @field_validator("leetcode_username")
     @classmethod
-    def strip_username(cls, value: str) -> str:
-        return value.strip()
+    def clean_leetcode(cls, value: str) -> str:
+        value = clean_username(value, LEETCODE_USERNAME_RE, "LeetCode", "leetcode.com")
+        if not value:
+            raise ValueError("LeetCode username is required")
+        return value
 
 
 class LinkedinScoreRequest(BaseModel):
