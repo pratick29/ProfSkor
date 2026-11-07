@@ -1,12 +1,13 @@
 import logging
 import uuid
-from io import BytesIO
 from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import eresume
 from auth import get_optional_user, require_admin, require_user
 from config import ALLOWED_ORIGINS, GITHUB_TOKEN, LOG_LEVEL, OPENAI_API_KEY
 from core.default_preferences import DEFAULT_PREFS
@@ -17,7 +18,7 @@ from db import get_supabase_client, insert_resume_analysis, insert_score_history
 from fetchers.github_fetcher import fetch_github_contributions, fetch_github_repos, fetch_github_user
 from fetchers.leetcode_fetcher import fetch_leetcode_user
 from rate_limit import enforce_rate_limit
-from resume_service import MAX_FILE_SIZE_BYTES, analyze_resume_text, extract_text_from_pdf
+from resume_service import analyze_resume_text
 from schemas import GithubScoreRequest, LeetcodeScoreRequest, LinkedinInput, LinkedinScoreRequest, SaveProfileRequest, ScoreRequest
 
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -25,6 +26,8 @@ log = logging.getLogger("profskor")
 
 app = FastAPI(title="ProfSkor API", version="3.0.0")
 supabase = get_supabase_client()
+eresume.supabase = supabase
+app.include_router(eresume.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,6 +36,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    """One readable message (e.g. "projects.0.repo_url: 'x' is not a valid link") instead of a list."""
+    errors = exc.errors()
+    first = errors[0] if errors else {}
+    where = ".".join(str(p) for p in first.get("loc", ()) if p not in ("body", "query", "path"))
+    message = str(first.get("msg", "Invalid request")).removeprefix("Value error, ")
+    return JSONResponse(status_code=422, content={"detail": f"{where}: {message}" if where else message, "errors": jsonable_errors(errors)})
+
+
+def jsonable_errors(errors):
+    return [{"loc": list(e.get("loc", ())), "msg": str(e.get("msg", ""))} for e in errors]
 
 
 @app.exception_handler(Exception)
@@ -360,20 +377,7 @@ async def resume_review(
     auth_user=Depends(optional_user_dep),
 ):
     enforce_rate_limit(request)
-    if not (file.filename or "").lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
-    body = await file.read(MAX_FILE_SIZE_BYTES + 1)
-    if len(body) > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(status_code=400, detail="PDF exceeds 5MB limit")
-    try:
-        text = extract_text_from_pdf(file_obj=BytesIO(body))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Could not read this PDF. Try exporting it again.")
-    if not text or len(text.strip()) < 50:
-        raise HTTPException(
-            status_code=400,
-            detail="Could not extract text from this PDF. If it's a scanned image, export a text-based PDF instead.",
-        )
+    text = await eresume.read_pdf_upload(file)
     analysis = analyze_resume_text(text, job_description)
     if auth_user:
         try:

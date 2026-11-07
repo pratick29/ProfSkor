@@ -14,14 +14,27 @@ import ResumeAI from "./pages/ResumeAI";
 import Search from "./pages/Search";
 import Admin from "./pages/Admin";
 import ProtectedRoute from "./components/ProtectedRoute";
+import EResume from "./pages/EResume";
+import PublicResume from "./pages/PublicResume";
 
 export default function App() {
+  return (
+    <Routes>
+      {/* Public e-resume pages stand alone, without the app's sidebar and navbar */}
+      <Route path="/r/:slug" element={<PublicResume />} />
+      <Route path="*" element={<AppRoutes />} />
+    </Routes>
+  );
+}
+
+function AppRoutes() {
   return (
     <Layout>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
         <Route path="/" element={<Home />} />
+        <Route path="/eresume" element={<EResume />} />
         <Route path="/resume" element={<ProtectedRoute><ResumeAI /></ProtectedRoute>} />
         <Route path="/github" element={<Github />} />
         <Route path="/leetcode" element={<Leetcode />} />

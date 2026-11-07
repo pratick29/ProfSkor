@@ -90,3 +90,48 @@ for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 drop policy if exists "audit_owner_policy" on public.audit_logs;
 create policy "audit_owner_policy" on public.audit_logs
 for select using (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
+-- E-resume: one live resume per user, published at /r/<slug>, plus anonymous view analytics.
+-- Safe to re-run. The API uses the service role; these policies only matter for direct client access.
+-- ---------------------------------------------------------------------------
+create table if not exists public.resumes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null unique references auth.users(id) on delete cascade,
+  slug text unique check (slug ~ '^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$'),
+  published boolean not null default false,
+  data jsonb not null default '{}'::jsonb,
+  settings jsonb not null default '{}'::jsonb,
+  -- short code the owner puts in their GitHub bio / LeetCode summary to prove the account is theirs
+  verify_code text not null,
+  -- {"github": {"username": ..., "verified_at": ...}, "leetcode": {...}, "email": {...}}
+  verified jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.resume_views (
+  id uuid primary key default gen_random_uuid(),
+  resume_id uuid not null references public.resumes(id) on delete cascade,
+  -- sha256 of a daily salt + IP + user agent: counts unique visitors without storing who they are
+  visitor_hash text not null,
+  via text,          -- tag from a tracked link (?via=acme)
+  referrer text,     -- referring domain only
+  duration_ms integer not null default 0 check (duration_ms >= 0),
+  sections jsonb not null default '[]'::jsonb,
+  clicks jsonb not null default '[]'::jsonb,
+  viewed_at timestamptz not null default now()
+);
+
+create index if not exists idx_resume_views_resume_id_viewed_at on public.resume_views(resume_id, viewed_at desc);
+
+alter table public.resumes enable row level security;
+alter table public.resume_views enable row level security;
+
+drop policy if exists "resumes_owner_policy" on public.resumes;
+create policy "resumes_owner_policy" on public.resumes
+for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "resume_views_owner_policy" on public.resume_views;
+create policy "resume_views_owner_policy" on public.resume_views
+for select using (exists (select 1 from public.resumes r where r.id = resume_id and r.user_id = auth.uid()));

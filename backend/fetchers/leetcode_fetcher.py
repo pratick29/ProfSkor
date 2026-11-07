@@ -16,6 +16,7 @@ query userProfile($username: String!) {
     profile {
       ranking
       reputation
+      aboutMe
     }
     submitStatsGlobal {
       acSubmissionNum {

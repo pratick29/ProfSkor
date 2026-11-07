@@ -35,6 +35,7 @@ def get_optional_user(
         "email": user.email,
         "metadata": user.user_metadata or {},
         "app_metadata": user.app_metadata or {},
+        "email_confirmed": bool(getattr(user, "email_confirmed_at", None)),
     }
 
 

@@ -68,8 +68,14 @@ export default function Home() {
           ) : (
             <>
               <Link
-                to="/full"
+                to="/eresume"
                 className="px-6 py-3 rounded-xl font-semibold bg-teal-500 text-white hover:bg-teal-400 shadow-lg shadow-teal-500/25 transition-all hover:shadow-teal-500/40 hover:-translate-y-0.5"
+              >
+                Build Your E-Resume
+              </Link>
+              <Link
+                to="/full"
+                className="px-6 py-3 rounded-xl font-semibold bg-white/5 border border-white/10 text-zinc-300 hover:bg-white/10 hover:border-white/20 transition-all"
               >
                 Get Your ProfSkor
               </Link>

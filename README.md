@@ -1,10 +1,22 @@
 # ProfSkor
 
-**Find out how strong your developer profile looks to recruiters, and exactly what to fix.**
+**A resume that proves itself.**
 
-ProfSkor scores your GitHub, LeetCode and LinkedIn profiles plus your resume, then gives you specific, prioritised suggestions. It uses live data from the GitHub and LeetCode APIs.
+ProfSkor turns your resume into a live page at `/r/your-name`: accounts you've proved are yours get a verified badge, projects show real GitHub stars and commit dates, and you can see when a recruiter opens it and what they read. It also scores your GitHub, LeetCode and LinkedIn profiles and gives you specific, prioritised suggestions, using live data from the GitHub and LeetCode APIs.
 
-## Features
+## E-resume
+
+| Feature | What it does |
+|---|---|
+| **Import** | Upload your current PDF resume and it's split into editable sections (AI when `OPENAI_API_KEY` is set, a rule-based parser otherwise), or pull your best original repos from GitHub as projects |
+| **Editor with live preview** | Basics, skills, experience, projects, education and achievements. Autosaves to your account; guests get a browser draft that moves to their account when they sign in |
+| **Public page** | `/r/<handle>`, publish or unpublish any time. Email and phone can be hidden, and hidden fields are stripped by the server |
+| **Verified accounts** | Put a one-time code in your GitHub bio or LeetCode summary to prove the account is yours. Verified accounts show live stats (repos, stars, contributions, problems solved, contest rating) that the candidate can't type in. The email gets a badge when it matches the confirmed account email |
+| **Evidence links** | Projects that are repos of the verified GitHub account show a "Verified repo" badge with live stars, forks and last commit. Skills are marked when a project, job or GitHub repo on the page backs them up; clicking a skill shows where |
+| **PDF** | One-click PDF from the editor or the public page (print stylesheet, A4), with a link back to the live version |
+| **Views** | Anonymous view analytics: views, unique visitors, time on page, which sections were read, which links were clicked, referrers. Make a tracked link per application (`?via=google-swe`) to see which company opened it. No cookies; visitors are counted with a daily-rotating hash, and your own visits don't count |
+
+## Profile scoring
 
 | Feature | What it does |
 |---|---|
@@ -14,7 +26,7 @@ ProfSkor scores your GitHub, LeetCode and LinkedIn profiles plus your resume, th
 | **Resume review** | Upload a PDF and get an AI review (OpenAI) or rule-based checks: contact info, sections, quantified impact, action verbs, length. Paste a job description to see which keywords you're missing |
 | **Full score** | Weighted overall score across platforms; weights can be adjusted per role |
 | **History & analytics** | Saved scores and progress over time; delete saved profiles |
-| **Shareable links** | Anyone with a saved profile's link (`/search?id=…`) can view it. The link is an unguessable UUID; guest profiles stay in the browser and can't be shared |
+| **Shareable score links** | Anyone with a saved profile's link (`/search?id=…`) can view it. The link is an unguessable UUID; guest profiles stay in the browser and can't be shared |
 | **Guest mode** | Try everything without an account; results stay in your browser |
 
 Profile URLs work as input too: `https://github.com/you` and `https://leetcode.com/u/you/` are accepted.
@@ -80,12 +92,15 @@ Backend (`.env` in the repo root; see [`.env.example`](.env.example)):
 | `RATE_LIMIT`, `TRUSTED_PROXY_HOPS` | Optional | Requests/minute per client; set hops to `1` behind Render's proxy |
 | `CACHE_TTL_SECONDS` | Optional | How long GitHub/LeetCode lookups are cached (default 1 hour) |
 | `ADMIN_API_SECRET` | Optional | Lets scripts call `/admin/metrics` with an `X-Admin-Secret` header |
+| `VIEW_HASH_SALT` | Optional | Salt for anonymous e-resume visitor IDs. Defaults to one derived from the service role key |
 
 Frontend (`frontend/.env`): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (the anon key, never the service role key), `VITE_API_URL`.
 
 ### Database
 
-Run [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL editor. It creates the tables, indexes and row-level security policies.
+Run [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL editor. It creates the tables, indexes and row-level security policies, and is safe to re-run (do that after upgrading to get the `resumes` and `resume_views` tables).
+
+Keep **Auth → Providers → Email → Confirm email** switched on: the e-resume's email badge relies on the account email being confirmed.
 
 To make a user an admin, set their `app_metadata` (not `user_metadata`, which users can edit themselves):
 
@@ -96,7 +111,7 @@ update auth.users set raw_app_meta_data = raw_app_meta_data || '{"role": "admin"
 ## Tests
 
 ```bash
-pytest backend -q             # 40+ tests, external APIs mocked
+pytest backend -q             # 55+ tests, external APIs and the database mocked
 cd frontend && npm run lint && npm run build
 ```
 
@@ -116,6 +131,7 @@ CI runs all of these on every push ([`.github/workflows/ci.yml`](.github/workflo
 
 ## Roadmap
 
-- Public shareable score card (`/u/username`) with an Open Graph image, and an embeddable README badge
+- **E-resume phase 2:** a tailored version per job (paste a job description, get a version that leads with the matching projects, each with its own link) and a requirements checklist that maps every requirement to evidence on the page
+- **E-resume phase 3:** "Ask this resume" (recruiters ask questions answered only from the resume and verified data) and recruiter actions (request interview, save to shortlist)
+- Open Graph preview image for `/r/<handle>` links
 - Role benchmarks ("how you compare to other backend candidates")
-- Weekly progress emails
