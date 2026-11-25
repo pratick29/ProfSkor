@@ -20,5 +20,10 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
       - key: CORS_ORIGINS
         sync: false
+      # salt for anonymous e-resume visitor IDs; Render generates a random value once
+      - key: VIEW_HASH_SALT
+        generateValue: true
